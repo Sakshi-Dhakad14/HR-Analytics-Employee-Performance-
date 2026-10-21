@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}High-Risk Employees{% endblock %}
+{% block heading %}High-Risk Employees{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <div><label>Department</label><select class="filter" name="Department"></select></div>
+    <div><label>OverTime</label><select class="filter" name="OverTime"></select></div>
+    <div><label>Show top</label>
+      <select id="topN"><option>20</option><option>50</option><option>100</option><option>200</option></select></div>
+    <div><label>Search</label><input type="text" id="search" placeholder="ID, role, department..."></div>
+    <div class="spacer"></div>
+    <a class="btn" id="dl" href="/download/high-risk"><i data-lucide="download"></i>Download CSV</a>
+  </div>
+
+  <div class="table-scroll">
+    <table class="data">
+      <thead><tr>
+        <th>ID</th><th>Age</th><th>Department</th><th>Job Role</th>
+        <th>Income</th><th>OverTime</th><th>Tenure</th><th>Risk</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer"></aside>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rows = [];
+
+function renderRows() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const list = rows.filter(r => !q ||
+    Object.values(r).join(' ').toLowerCase().includes(q));
+  document.getElementById('rows').innerHTML = list.map(r => `
+    <tr data-id="${r.EmployeeID}">
+      <td>#${r.EmployeeID}</td><td>${r.Age}</td><td>${r.Department}</td>
+      <td>${r.JobRole}</td><td>${money(r.MonthlyIncome)}</td><td>${r.OverTime}</td>
+      <td>${r.YearsAtCompany} yrs</td>
+      <td><span class="risk-bar"><i style="width:${r.RiskProb * 100}%;background:${riskColor(r.RiskLevel)}"></i></span>
+          ${Math.round(r.RiskProb * 100)}% ${badge(r.RiskLevel)}</td>
+    </tr>`).join('') ||
+    '<tr><td colspan="8" class="muted">No employees found.</td></tr>';
+  document.querySelectorAll('#rows tr[data-id]').forEach(tr =>
+    tr.addEventListener('click', () => openDrawer(tr.dataset.id)));
+}
+
+async function load() {
+  const qs = filterQS() + '&top=' + document.getElementById('topN').value;
+  rows = await getJSON('/api/high-risk?' + qs);
+  renderRows();
+  document.getElementById('dl').href = '/download/high-risk?' + filterQS();
+}
+
+async function openDrawer(id) {
+  const e = await getJSON('/api/employee/' + id);
+  const details = Object.entries(e.details).map(([k, v]) =>
+    `<div class="kv"><span>${k}</span><span>${v}</span></div>`).join('');
+  const factors = e.factors.length
+    ? e.factors.map(f => `<div class="factor"><b>${f.factor}</b><span>${f.action}</span></div>`).join('')
+    : '<span class="muted">Koi major risk factor nahi mila.</span>';
+  document.getElementById('drawer').innerHTML = `
+    <div class="drawer-head"><h3>Employee #${e.id}</h3>
+      <button class="btn btn-outline" id="closeDrawer">Close</button></div>
+    <div class="big-score" style="color:${riskColor(e.level)}">${e.probability}%</div>
+    ${badge(e.level)} <span class="muted">attrition risk</span>
+    <h4>Suggested actions</h4>${factors}
+    <h4>Profile</h4>${details}`;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('closeDrawer').addEventListener('click', closeDrawer);
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+document.getElementById('overlay').addEventListener('click', closeDrawer);
+
+async function init() {
+  const f = await getJSON('/api/filters');
+  document.querySelectorAll('.filter').forEach(sel => {
+    sel.innerHTML = '<option>All</option>' +
+      f[sel.name].map(v => `<option>${v}</option>`).join('');
+    sel.addEventListener('change', load);
+  });
+  document.getElementById('topN').addEventListener('change', load);
+  document.getElementById('search').addEventListener('input', renderRows);
+  load();
+}
+init();
+</script>
+{% endblock %}

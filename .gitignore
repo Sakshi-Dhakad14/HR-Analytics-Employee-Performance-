@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Editor & IDE configs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

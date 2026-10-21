@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HR Dashboard{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>
+    document.documentElement.setAttribute(
+      'data-theme', localStorage.getItem('theme') || 'light');
+  </script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">📊 HR Analytics</div>
+      <nav>
+        <a href="{{ url_for('overview') }}" class="{{ 'active' if request.endpoint == 'overview' }}">Overview</a>
+        <a href="{{ url_for('predict_page') }}" class="{{ 'active' if request.endpoint == 'predict_page' }}">Predict Employee</a>
+        <a href="{{ url_for('high_risk_page') }}" class="{{ 'active' if request.endpoint == 'high_risk_page' }}">High-Risk Employees</a>
+        <a href="{{ url_for('model_performance') }}" class="{{ 'active' if request.endpoint == 'model_performance' }}">Model Performance</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <button id="themeToggle" class="btn">🌙 Dark mode</button>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline">Logout</a>
+      </div>
+    </aside>
+
+    <main class="content">
+      <h1 class="page-title">{% block heading %}{% endblock %}</h1>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

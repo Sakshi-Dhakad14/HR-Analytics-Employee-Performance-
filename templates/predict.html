@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Predict{% endblock %}
+{% block heading %}Predict &amp; What-if Simulator{% endblock %}
+
+{% block content %}
+<p class="muted" style="margin-top:0">Employee ki details badlo, attrition risk live update hoga. Slider se dekho ki kaunsi cheez badalne par risk kam hota hai.</p>
+<div class="predict-layout">
+  <div class="card">
+    <h3>Employee profile</h3>
+    <div class="form-grid" id="form"></div>
+  </div>
+
+  <div class="card sticky">
+    <h3>Attrition risk</h3>
+    <div class="gauge-wrap">
+      <canvas id="gauge"></canvas>
+      <div class="gauge-text"><b id="gaugeValue">-</b><span id="gaugeLevel"></span></div>
+    </div>
+    <h3 style="margin-top:22px">Risk factors &amp; suggested actions</h3>
+    <div id="factors"><span class="muted">Calculating...</span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let schema = [];
+let timer = null;
+
+function buildForm() {
+  const form = document.getElementById('form');
+  form.innerHTML = schema.map(f => {
+    if (f.type === 'select') {
+      return `<div><label>${f.name}</label>
+        <select data-name="${f.name}" data-type="select">
+          ${f.options.map(o => `<option ${o === f.default ? 'selected' : ''}>${o}</option>`).join('')}
+        </select></div>`;
+    }
+    const step = (f.max - f.min) > 1000 ? 100 : 1;
+    return `<div>
+      <div class="slider-row"><label>${f.name}</label><output id="out_${f.name}">${Math.round(f.default)}</output></div>
+      <input type="range" data-name="${f.name}" data-type="number"
+        min="${f.min}" max="${f.max}" step="${step}" value="${Math.round(f.default)}"></div>`;
+  }).join('');
+
+  form.querySelectorAll('select, input').forEach(el => {
+    el.addEventListener('input', () => {
+      if (el.dataset.type === 'number')
+        document.getElementById('out_' + el.dataset.name).textContent = el.value;
+      clearTimeout(timer);
+      timer = setTimeout(predict, 200);
+    });
+  });
+}
+
+function collect() {
+  const body = {};
+  document.querySelectorAll('#form [data-name]').forEach(el => {
+    body[el.dataset.name] = el.dataset.type === 'number' ? Number(el.value) : el.value;
+  });
+  return body;
+}
+
+function drawGauge(p, level) {
+  drawChart('gauge', {
+    type: 'doughnut',
+    data: { datasets: [{ data: [p, 100 - p],
+      backgroundColor: [riskColor(level), cssVar('--border')], borderWidth: 0 }] },
+    options: { rotation: -90, circumference: 180, cutout: '75%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      aspectRatio: 2, maintainAspectRatio: true },
+  });
+}
+
+async function predict() {
+  const r = await getJSON('/api/predict', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(collect()),
+  });
+  document.getElementById('gaugeValue').textContent = r.probability + '%';
+  document.getElementById('gaugeLevel').innerHTML = badge(r.level);
+  drawGauge(r.probability, r.level);
+  document.getElementById('factors').innerHTML = r.factors.length
+    ? r.factors.map(f => `<div class="factor"><b>${f.factor}</b><span>${f.action}</span></div>`).join('')
+    : '<span class="muted">Koi major risk factor nahi mila.</span>';
+}
+
+async function init() {
+  schema = await getJSON('/api/form-schema');
+  buildForm();
+  predict();
+}
+window.addEventListener('themechange', predict);
+init();
+</script>
+{% endblock %}

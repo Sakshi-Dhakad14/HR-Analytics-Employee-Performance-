@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block heading %}Workforce Overview{% endblock %}
+
+{% block content %}
+<section class="filters card">
+  <div><label>Department</label><select class="filter" name="Department"></select></div>
+  <div><label>Job Role</label><select class="filter" name="JobRole"></select></div>
+  <div><label>Gender</label><select class="filter" name="Gender"></select></div>
+  <div><label>OverTime</label><select class="filter" name="OverTime"></select></div>
+  <button id="resetFilters" class="btn btn-outline">Reset</button>
+</section>
+
+<section class="kpis">
+  <div class="card kpi"><span>Total Employees</span><b id="kpiTotal" class="skeleton">0000</b></div>
+  <div class="card kpi"><span>Attrition Rate</span><b id="kpiRate" class="skeleton">00%</b></div>
+  <div class="card kpi"><span>Avg Monthly Income</span><b id="kpiIncome" class="skeleton">$0000</b></div>
+  <div class="card kpi"><span>Avg Tenure (yrs)</span><b id="kpiTenure" class="skeleton">00</b></div>
+  <div class="card kpi danger"><span>High-Risk Employees</span><b id="kpiRisk" class="skeleton">000</b></div>
+  <div class="card kpi"><span>Est. Attrition Cost</span><b id="kpiCost" class="skeleton">$000000</b></div>
+</section>
+
+<section class="card insights" style="margin-bottom:16px">
+  <h3>Key insights</h3>
+  <ul id="insights"><li class="muted">Loading...</li></ul>
+</section>
+
+<section class="two-col">
+  <div class="card"><h3>Risk distribution</h3><div class="chart-box"><canvas id="chartRisk"></canvas></div></div>
+  <div class="card"><h3>Top attrition drivers (model)</h3><div class="chart-box"><canvas id="chartDrivers"></canvas></div></div>
+</section>
+
+<section class="card" style="margin-bottom:16px">
+  <h3>Attrition % heatmap: Job Role x Department</h3>
+  <div class="heat-wrap"><table class="heat" id="heatmap"></table></div>
+</section>
+
+<section class="grid">
+  <div class="card"><h3>Attrition % by Department</h3><div class="chart-box"><canvas id="chartDept"></canvas></div></div>
+  <div class="card"><h3>Attrition % by OverTime</h3><div class="chart-box"><canvas id="chartOT"></canvas></div></div>
+  <div class="card wide"><h3>Attrition % by Job Role</h3><div class="chart-box tall"><canvas id="chartRole"></canvas></div></div>
+  <div class="card"><h3>Attrition % by Marital Status</h3><div class="chart-box"><canvas id="chartMarital"></canvas></div></div>
+  <div class="card"><h3>Attrition % by Work-Life Balance</h3><div class="chart-box"><canvas id="chartWLB"></canvas></div></div>
+  <div class="card"><h3>Attrition % by Business Travel</h3><div class="chart-box"><canvas id="chartTravel"></canvas></div></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CHARTS = [
+  { id: 'chartDept',    col: 'Department' },
+  { id: 'chartOT',      col: 'OverTime' },
+  { id: 'chartRole',    col: 'JobRole', horizontal: true },
+  { id: 'chartMarital', col: 'MaritalStatus' },
+  { id: 'chartWLB',     col: 'WorkLifeBalance' },
+  { id: 'chartTravel',  col: 'BusinessTravel' },
+];
+
+function setKpi(id, text) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.classList.remove('skeleton');
+}
+
+async function loadKPIs() {
+  const k = await getJSON('/api/kpis?' + filterQS());
+  setKpi('kpiTotal', k.total);
+  setKpi('kpiRate', k.attrition_rate + '%');
+  setKpi('kpiIncome', money(k.avg_income));
+  setKpi('kpiTenure', k.avg_tenure);
+  setKpi('kpiRisk', k.high_risk);
+  setKpi('kpiCost', money(k.attrition_cost));
+}
+
+async function loadInsights() {
+  const list = await getJSON('/api/insights?' + filterQS());
+  document.getElementById('insights').innerHTML = list.length
+    ? list.map(t => `<li>${t}</li>`).join('')
+    : '<li class="muted">Not enough data for insights with these filters.</li>';
+}
+
+async function loadRisk() {
+  const d = await getJSON('/api/risk-distribution?' + filterQS());
+  drawChart('chartRisk', {
+    type: 'doughnut',
+    data: { labels: d.labels, datasets: [{
+      data: d.values,
+      backgroundColor: [cssVar('--low'), cssVar('--med'), cssVar('--high')],
+      borderWidth: 0 }] },
+    options: { cutout: '65%', plugins: { legend: { position: 'bottom' } } },
+  });
+}
+
+async function loadDrivers() {
+  const m = await getJSON('/api/model-metrics');
+  const fi = m.feature_importance;
+  drawChart('chartDrivers', {
+    type: 'bar',
+    data: { labels: fi.labels, datasets: [{
+      data: fi.values, backgroundColor: cssVar('--primary'), borderRadius: 4 }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } },
+               scales: { y: { grid: { display: false } } } },
+  });
+}
+
+async function loadHeatmap() {
+  const h = await getJSON('/api/heatmap?' + filterQS());
+  const color = v => v === null ? 'transparent'
+    : `rgba(220,38,38,${0.08 + Math.min(v / 40, 1) * 0.7})`;
+  let html = '<thead><tr><th>Job Role</th>' +
+    h.cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  h.rows.forEach((r, i) => {
+    html += `<tr><th>${r}</th>` + h.values[i].map(v =>
+      `<td style="background:${color(v)}">${v === null ? '-' : v + '%'}</td>`).join('') + '</tr>';
+  });
+  document.getElementById('heatmap').innerHTML = html + '</tbody>';
+}
+
+async function loadCharts() {
+  for (const c of CHARTS) {
+    const d = await getJSON(`/api/attrition-by/${c.col}?` + filterQS());
+    drawChart(c.id, {
+      type: 'bar',
+      data: { labels: d.labels, datasets: [{
+        data: d.rate, backgroundColor: cssVar('--primary'), borderRadius: 6 }] },
+      options: {
+        indexAxis: c.horizontal ? 'y' : 'x',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: ctx => `Attrition: ${ctx.parsed[c.horizontal ? 'x' : 'y']}%`,
+            afterLabel: ctx => `${d.left[ctx.dataIndex]} left of ${d.total[ctx.dataIndex]}` } },
+        },
+        scales: { [c.horizontal ? 'y' : 'x']: { grid: { display: false } } },
+      },
+    });
+  }
+}
+
+function refreshAll() {
+  loadKPIs(); loadInsights(); loadRisk(); loadHeatmap(); loadCharts();
+}
+
+async function init() {
+  const f = await getJSON('/api/filters');
+  document.querySelectorAll('.filter').forEach(sel => {
+    sel.innerHTML = '<option>All</option>' +
+      f[sel.name].map(v => `<option>${v}</option>`).join('');
+    sel.addEventListener('change', refreshAll);
+  });
+  document.getElementById('resetFilters').addEventListener('click', () => {
+    document.querySelectorAll('.filter').forEach(s => s.value = 'All');
+    refreshAll();
+  });
+  loadDrivers();
+  refreshAll();
+}
+
+window.addEventListener('themechange', () => { loadRisk(); loadDrivers(); loadCharts(); });
+init();
+</script>
+{% endblock %}

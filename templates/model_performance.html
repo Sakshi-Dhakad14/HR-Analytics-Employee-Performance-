@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Model Performance{% endblock %}
+{% block heading %}Model Performance{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:16px">
+  <h3>Model comparison <span class="muted" id="bestNote"></span></h3>
+  <div class="table-scroll">
+    <table class="data">
+      <thead><tr><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>ROC-AUC</th></tr></thead>
+      <tbody id="metricRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card"><h3>ROC curves</h3><div class="chart-box tall"><canvas id="roc"></canvas></div></div>
+  <div class="card">
+    <h3>Confusion matrix</h3>
+    <div style="max-width:220px;margin-bottom:14px"><select id="cmModel"></select></div>
+    <div class="cm" id="cm"></div>
+    <p class="muted" style="margin-top:14px">Rows = actual, columns = predicted.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let M = null;
+
+function renderTable() {
+  const names = Object.keys(M.models);
+  document.getElementById('bestNote').textContent = '- best: ' + M.best_model;
+  document.getElementById('metricRows').innerHTML = names.map(n => {
+    const m = M.models[n];
+    return `<tr class="${n === M.best_model ? 'best' : ''}">
+      <td>${n}</td><td>${m.accuracy}</td><td>${m.precision}</td>
+      <td>${m.recall}</td><td>${m.f1}</td><td>${m.roc_auc}</td></tr>`;
+  }).join('');
+}
+
+function renderRoc() {
+  const palette = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#64748b'];
+  const sets = Object.entries(M.models).map(([n, m], i) => ({
+    label: `${n} (AUC ${m.roc_auc})`,
+    data: m.roc_curve.fpr.map((x, j) => ({ x, y: m.roc_curve.tpr[j] })),
+    borderColor: palette[i % palette.length], backgroundColor: palette[i % palette.length],
+    pointRadius: 0, tension: 0.2, borderWidth: 2,
+  }));
+  sets.push({ label: 'Random', data: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+    borderColor: cssVar('--muted'), borderDash: [6, 6], pointRadius: 0, borderWidth: 1 });
+  drawChart('roc', {
+    type: 'line', data: { datasets: sets },
+    options: {
+      scales: {
+        x: { type: 'linear', min: 0, max: 1, title: { display: true, text: 'False positive rate' } },
+        y: { type: 'linear', min: 0, max: 1, title: { display: true, text: 'True positive rate' } },
+      },
+      plugins: { legend: { position: 'bottom' } },
+    },
+  });
+}
+
+function renderCM() {
+  const name = document.getElementById('cmModel').value;
+  const [[tn, fp], [fn, tp]] = M.models[name].confusion_matrix;
+  document.getElementById('cm').innerHTML = `
+    <span></span><span class="lbl">Pred: Stay</span><span class="lbl">Pred: Leave</span>
+    <span class="lbl">Actual: Stay</span><div class="cell good">${tn}</div><div class="cell bad">${fp}</div>
+    <span class="lbl">Actual: Leave</span><div class="cell bad">${fn}</div><div class="cell good">${tp}</div>`;
+}
+
+async function init() {
+  M = await getJSON('/api/model-metrics');
+  const sel = document.getElementById('cmModel');
+  sel.innerHTML = Object.keys(M.models).map(n =>
+    `<option ${n === M.best_model ? 'selected' : ''}>${n}</option>`).join('');
+  sel.addEventListener('change', renderCM);
+  renderTable(); renderRoc(); renderCM();
+}
+window.addEventListener('themechange', () => M && renderRoc());
+init();
+</script>
+{% endblock %}
