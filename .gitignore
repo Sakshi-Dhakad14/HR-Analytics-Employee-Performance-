@@ -25,3 +25,14 @@ ehthumbs.db
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python virtual environments
+.venv/
+venv/
