@@ -43,7 +43,7 @@ This project analyzes the IBM HR Analytics Employee Attrition dataset to identif
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/PriyaMeena12/HR-analytic-system.git
+git clone https://github.com/Sakshi-Dhakad14/HR-Analytics-Employee-Performance-.git
 cd HR-analytic-system
 ```
 
